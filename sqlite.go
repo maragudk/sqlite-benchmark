@@ -7,9 +7,9 @@ import (
 )
 
 type DB struct {
-	DB         *sql.DB
-	useMutex   bool
-	writeMutex sync.Mutex
+	DB       *sql.DB
+	useMutex bool
+	mutex    sync.RWMutex
 }
 
 func NewDB(path string, useMutex bool) (*DB, error) {
@@ -47,8 +47,8 @@ func NewDB(path string, useMutex bool) (*DB, error) {
 
 func (d *DB) WritePost(title, content string) error {
 	if d.useMutex {
-		d.writeMutex.Lock()
-		defer d.writeMutex.Unlock()
+		d.mutex.Lock()
+		defer d.mutex.Unlock()
 	}
 
 	_, err := d.DB.Exec(`insert into posts (title, content) values (?, ?)`, title, content)
@@ -68,6 +68,11 @@ type Comment struct {
 }
 
 func (d *DB) ReadPost(id int) (p *Post, cs []*Comment, err error) {
+	if d.useMutex {
+		d.mutex.RLock()
+		defer d.mutex.RUnlock()
+	}
+	
 	p = &Post{ID: id}
 
 	row := d.DB.QueryRow(`select title, content from posts where id = ?`, id)
@@ -99,8 +104,8 @@ func (d *DB) ReadPost(id int) (p *Post, cs []*Comment, err error) {
 
 func (d *DB) WriteComment(postID int, name, content string) error {
 	if d.useMutex {
-		d.writeMutex.Lock()
-		defer d.writeMutex.Unlock()
+		d.mutex.Lock()
+		defer d.mutex.Unlock()
 	}
 
 	_, err := d.DB.Exec(`insert into comments (post_id, name, content) values (?, ?, ?)`, postID, name, content)
