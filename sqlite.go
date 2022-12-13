@@ -5,12 +5,7 @@ import (
 	_ "embed"
 	"errors"
 	"sync"
-
-	_ "github.com/mattn/go-sqlite3"
 )
-
-//go:embed schema.sql
-var schema string
 
 type DB struct {
 	DB       *sql.DB
@@ -18,19 +13,8 @@ type DB struct {
 	mutex    sync.RWMutex
 }
 
-func NewDB(path string, useMutex bool) (*DB, error) {
-	db, err := sql.Open("sqlite3", path+"?_journal=WAL&_timeout=10000&_fk=true")
-	if err != nil {
-		return nil, err
-	}
-	newDB := &DB{DB: db, useMutex: useMutex}
-
-	_, err = db.Exec(schema)
-	if err != nil {
-		return newDB, err
-	}
-
-	return newDB, nil
+func NewDB(db *sql.DB, useMutex bool) *DB {
+	return &DB{DB: db, useMutex: useMutex}
 }
 
 func (d *DB) WritePost(title, content string) error {
@@ -39,7 +23,7 @@ func (d *DB) WritePost(title, content string) error {
 		defer d.mutex.Unlock()
 	}
 
-	_, err := d.DB.Exec(`insert into posts (title, content) values (?, ?)`, title, content)
+	_, err := d.DB.Exec(`insert into posts (title, content) values ($1, $2)`, title, content)
 	return err
 }
 
@@ -63,7 +47,7 @@ func (d *DB) ReadPost(id int) (p *Post, cs []*Comment, err error) {
 
 	p = &Post{ID: id}
 
-	row := d.DB.QueryRow(`select title, content from posts where id = ?`, id)
+	row := d.DB.QueryRow(`select title, content from posts where id = $1`, id)
 	if err = row.Scan(&p.Title, &p.Content); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			p = nil
@@ -72,7 +56,7 @@ func (d *DB) ReadPost(id int) (p *Post, cs []*Comment, err error) {
 	}
 
 	var rows *sql.Rows
-	rows, err = d.DB.Query(`select id, name, content from comments where post_id = ? order by created`, id)
+	rows, err = d.DB.Query(`select id, name, content from comments where post_id = $1 order by created`, id)
 	if err != nil {
 		return
 	}
@@ -96,6 +80,6 @@ func (d *DB) WriteComment(postID int, name, content string) error {
 		defer d.mutex.Unlock()
 	}
 
-	_, err := d.DB.Exec(`insert into comments (post_id, name, content) values (?, ?, ?)`, postID, name, content)
+	_, err := d.DB.Exec(`insert into comments (post_id, name, content) values ($1, $2, $3)`, postID, name, content)
 	return err
 }
