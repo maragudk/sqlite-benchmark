@@ -152,7 +152,7 @@ var postgresSchema string
 func setupPostgres(tb testing.TB, withMutex bool) *sqlite.DB {
 	tb.Helper()
 
-	db, err := sql.Open("pgx", fmt.Sprintf("postgresql://test:123@localhost:5432/benchmark?sslmode=disable"))
+	db, err := sql.Open("pgx", "postgresql://test:123@localhost:5432/benchmark?sslmode=disable")
 	noErr(tb, err)
 
 	_, err = db.Exec(postgresSchema)
