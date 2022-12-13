@@ -10,6 +10,27 @@ import (
 	"github.com/maragudk/sqlite-benchmark"
 )
 
+func TestNewDB(t *testing.T) {
+	t.Run("sets up a new DB", func(t *testing.T) {
+		db, err := sqlite.NewDB(path.Join(t.TempDir(), "app.db"), false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for _, pragma := range []string{"synchronous", "journal_mode", "busy_timeout", "auto_vacuum", "foreign_keys"} {
+			t.Log("PRAGMA", pragma, getPragma(db, pragma))
+		}
+	})
+}
+
+func getPragma(db *sqlite.DB, name string) string {
+	var s string
+	if err := db.DB.QueryRow(`PRAGMA ` + name).Scan(&s); err != nil {
+		panic(err)
+	}
+	return s
+}
+
 func BenchmarkSelect1(b *testing.B) {
 	db := setupDB(b, false)
 
