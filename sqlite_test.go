@@ -44,6 +44,23 @@ func BenchmarkSelect1(b *testing.B) {
 	})
 }
 
+func BenchmarkDB_ReadPost(b *testing.B) {
+	for _, withMutex := range []bool{false, true} {
+		b.Run("mutex "+strconv.FormatBool(withMutex), func(b *testing.B) {
+			db := setupDB(b, withMutex)
+
+			b.ResetTimer()
+
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					_, _, err := db.ReadPost(1)
+					noErr(b, err)
+				}
+			})
+		})
+	}
+}
+
 func BenchmarkDB_WritePost(b *testing.B) {
 	for _, withMutex := range []bool{false, true} {
 		b.Run("mutex "+strconv.FormatBool(withMutex), func(b *testing.B) {
@@ -61,14 +78,14 @@ func BenchmarkDB_WritePost(b *testing.B) {
 	}
 }
 
-func BenchmarkDB_ReadPost(b *testing.B) {
+func BenchmarkDB_ReadPostAndMaybeWriteComment(b *testing.B) {
 	for _, withMutex := range []bool{false, true} {
 		b.Run("mutex "+strconv.FormatBool(withMutex), func(b *testing.B) {
 			db := setupDB(b, withMutex)
 
 			b.ResetTimer()
 
-			for _, commentRate := range []float64{0, 0.01, 0.1, 1} {
+			for _, commentRate := range []float64{0.01, 0.1, 1} {
 				b.Run(fmt.Sprintf("comment rate %v", commentRate), func(b *testing.B) {
 					b.RunParallel(func(pb *testing.PB) {
 						for pb.Next() {
