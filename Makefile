@@ -8,11 +8,11 @@ benchmark-postgres-csv:
 
 .PHONY: benchmark-sqlite
 benchmark-sqlite:
-	go test -cpu 1,2,4,8,16,32,64,128,256,512,1024 -bench .
+	go test -timeout 30m -cpu 1,2,4,8,16,32,64,128,256,512,1024 -bench .
 
 .PHONY: benchmark-sqlite-csv
 benchmark-sqlite-csv:
-	go test -cpu 1,2,4,8,16,32,64,128,256,512,1024 -bench . | bench2csv -freq >>benchmark.csv
+	go test -timeout 30m -cpu 1,2,4,8,16,32,64,128,256,512,1024 -bench . | bench2csv -freq >>benchmark.csv
 
 .PHONY: down
 down:
