@@ -2,9 +2,15 @@ package sqlite
 
 import (
 	"database/sql"
+	_ "embed"
 	"errors"
 	"sync"
+
+	_ "github.com/mattn/go-sqlite3"
 )
+
+//go:embed schema.sql
+var schema string
 
 type DB struct {
 	DB       *sql.DB
@@ -19,25 +25,7 @@ func NewDB(path string, useMutex bool) (*DB, error) {
 	}
 	newDB := &DB{DB: db, useMutex: useMutex}
 
-	_, err = db.Exec(`
-			create table posts (
-				id integer primary key,
-				title text not null,
-				content text not null,
-				created text not null default (strftime('%Y-%m-%dT%H:%M:%fZ'))
-			)`)
-	if err != nil {
-		return newDB, err
-	}
-
-	_, err = db.Exec(`
-			create table comments (
-				id integer primary key,
-				post_id int not null references posts (id),
-				name text not null,
-				content text not null,
-				created text not null default (strftime('%Y-%m-%dT%H:%M:%fZ'))
-			)`)
+	_, err = db.Exec(schema)
 	if err != nil {
 		return newDB, err
 	}
@@ -72,7 +60,7 @@ func (d *DB) ReadPost(id int) (p *Post, cs []*Comment, err error) {
 		d.mutex.RLock()
 		defer d.mutex.RUnlock()
 	}
-	
+
 	p = &Post{ID: id}
 
 	row := d.DB.QueryRow(`select title, content from posts where id = ?`, id)
