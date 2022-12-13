@@ -1,21 +1,23 @@
 package sqlite_test
 
 import (
+	"database/sql"
+	_ "embed"
 	"fmt"
 	"math/rand"
 	"path"
 	"strconv"
 	"testing"
 
+	_ "github.com/jackc/pgx/v4/stdlib"
+	_ "github.com/mattn/go-sqlite3"
+
 	"github.com/maragudk/sqlite-benchmark"
 )
 
-func TestNewDB(t *testing.T) {
+func TestPragma(t *testing.T) {
 	t.Run("sets up a new DB", func(t *testing.T) {
-		db, err := sqlite.NewDB(path.Join(t.TempDir(), "app.db"), false)
-		if err != nil {
-			t.Fatal(err)
-		}
+		db := setupSQLite(t, false)
 
 		for _, pragma := range []string{"synchronous", "journal_mode", "busy_timeout", "auto_vacuum", "foreign_keys"} {
 			t.Log("PRAGMA", pragma, getPragma(db, pragma))
@@ -32,7 +34,7 @@ func getPragma(db *sqlite.DB, name string) string {
 }
 
 func BenchmarkSelect1(b *testing.B) {
-	db := setupDB(b, false)
+	db := setupSQLite(b, false)
 
 	b.ResetTimer()
 
@@ -47,7 +49,7 @@ func BenchmarkSelect1(b *testing.B) {
 func BenchmarkDB_ReadPost(b *testing.B) {
 	for _, withMutex := range []bool{false, true} {
 		b.Run("mutex "+strconv.FormatBool(withMutex), func(b *testing.B) {
-			db := setupDB(b, withMutex)
+			db := setupSQLite(b, withMutex)
 
 			b.ResetTimer()
 
@@ -64,7 +66,7 @@ func BenchmarkDB_ReadPost(b *testing.B) {
 func BenchmarkDB_WritePost(b *testing.B) {
 	for _, withMutex := range []bool{false, true} {
 		b.Run("mutex "+strconv.FormatBool(withMutex), func(b *testing.B) {
-			db := setupDB(b, withMutex)
+			db := setupSQLite(b, withMutex)
 
 			b.ResetTimer()
 
@@ -81,7 +83,7 @@ func BenchmarkDB_WritePost(b *testing.B) {
 func BenchmarkDB_ReadPostAndMaybeWriteComment(b *testing.B) {
 	for _, withMutex := range []bool{false, true} {
 		b.Run("mutex "+strconv.FormatBool(withMutex), func(b *testing.B) {
-			db := setupDB(b, withMutex)
+			db := setupSQLite(b, withMutex)
 
 			b.ResetTimer()
 
@@ -103,17 +105,77 @@ func BenchmarkDB_ReadPostAndMaybeWriteComment(b *testing.B) {
 	}
 }
 
-func setupDB(b *testing.B, withMutex bool) *sqlite.DB {
-	db, err := sqlite.NewDB(path.Join(b.TempDir(), "benchmark.db"), withMutex)
-	noErr(b, err)
-	err = db.WritePost("First post!", loremIpsum)
-	noErr(b, err)
-	return db
+func BenchmarkDB_ReadPostAndMaybeWriteCommentPostgres(b *testing.B) {
+	db := setupPostgres(b, false)
+
+	b.ResetTimer()
+
+	for _, commentRate := range []float64{0.01, 0.1, 1} {
+		b.Run(fmt.Sprintf("comment rate %v", commentRate), func(b *testing.B) {
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					_, _, err := db.ReadPost(1)
+					noErr(b, err)
+					if rand.Float64() < commentRate {
+						err = db.WriteComment(1, "Love it!", "Great post. :D")
+						noErr(b, err)
+					}
+				}
+			})
+		})
+	}
 }
 
-func noErr(b *testing.B, err error) {
+//go:embed sqlite.sql
+var sqliteSchema string
+
+func setupSQLite(tb testing.TB, withMutex bool) *sqlite.DB {
+	tb.Helper()
+
+	db, err := sql.Open("sqlite3", path.Join(tb.TempDir(), "benchmark.db")+"?_journal=WAL&_timeout=10000&_fk=true")
+	noErr(tb, err)
+
+	_, err = db.Exec(sqliteSchema)
+	noErr(tb, err)
+
+	newDB := sqlite.NewDB(db, withMutex)
+
+	err = newDB.WritePost("First post!", loremIpsum)
+	noErr(tb, err)
+
+	return newDB
+}
+
+//go:embed postgres.sql
+var postgresSchema string
+
+func setupPostgres(tb testing.TB, withMutex bool) *sqlite.DB {
+	tb.Helper()
+
+	db, err := sql.Open("pgx", fmt.Sprintf("postgresql://test:123@localhost:5432/benchmark?sslmode=disable"))
+	noErr(tb, err)
+
+	_, err = db.Exec(postgresSchema)
+	noErr(tb, err)
+
+	tb.Cleanup(func() {
+		_, err := db.Exec(`drop table comments; drop table posts;`)
+		noErr(tb, err)
+	})
+
+	newDB := sqlite.NewDB(db, withMutex)
+
+	err = newDB.WritePost("First post!", loremIpsum)
+	noErr(tb, err)
+
+	return newDB
+}
+
+func noErr(tb testing.TB, err error) {
+	tb.Helper()
+
 	if err != nil {
-		b.Fatal("Error is not nil:", err)
+		tb.Fatal("Error is not nil:", err)
 	}
 }
 
