@@ -105,6 +105,28 @@ func BenchmarkDB_ReadPostAndMaybeWriteComment(b *testing.B) {
 	}
 }
 
+func BenchmarkDB_ReadPostAndMaybeWriteCommentWithPool(b *testing.B) {
+	for _, commentRate := range []float64{0.01, 0.1, 1} {
+		b.Run(fmt.Sprintf("comment rate %v", commentRate), func(b *testing.B) {
+			writeDB, readDB := setupSQLitePool(b)
+
+			b.ResetTimer()
+
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					_, _, err := readDB.ReadPost(1)
+					noErr(b, err)
+
+					if rand.Float64() < commentRate {
+						err = writeDB.WriteComment(1, "Love it!", "Great post. :D")
+						noErr(b, err)
+					}
+				}
+			})
+		})
+	}
+}
+
 //go:embed sqlite.sql
 var sqliteSchema string
 
@@ -123,6 +145,32 @@ func setupSQLite(tb testing.TB, withMutex bool) *sqlite.DB {
 	noErr(tb, err)
 
 	return newDB
+}
+
+func setupSQLitePool(tb testing.TB) (*sqlite.DB, *sqlite.DB) {
+	tb.Helper()
+
+	p := path.Join(tb.TempDir(), "benchmark.db")
+
+	writeDB, err := sql.Open("sqlite3", p+"?_journal=WAL&_timeout=10000&_fk=true")
+	noErr(tb, err)
+
+	writeDB.SetMaxOpenConns(1)
+
+	_, err = writeDB.Exec(sqliteSchema)
+	noErr(tb, err)
+
+	newWriteDB := sqlite.NewDB(writeDB, false)
+
+	err = newWriteDB.WritePost("First post!", loremIpsum)
+	noErr(tb, err)
+
+	readDB, err := sql.Open("sqlite3", p+"?_journal=WAL&_timeout=10000&_fk=true")
+	noErr(tb, err)
+
+	newReadDB := sqlite.NewDB(readDB, false)
+
+	return newWriteDB, newReadDB
 }
 
 func noErr(tb testing.TB, err error) {
