@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 
 	"github.com/maragudk/sqlite-benchmark"
 )
@@ -130,13 +130,18 @@ func BenchmarkDB_ReadPostAndMaybeWriteCommentWithPool(b *testing.B) {
 //go:embed sqlite.sql
 var sqliteSchema string
 
+var sqlitePragmas = `pragma journal_mode = wal; pragma busy_timeout = 120000; pragma foreign_keys = 1;`
+
 func setupSQLite(tb testing.TB, withMutex bool) *sqlite.DB {
 	tb.Helper()
 
-	db, err := sql.Open("sqlite3", path.Join(tb.TempDir(), "benchmark.db")+"?_journal=WAL&_timeout=10000&_fk=true")
+	db, err := sql.Open("sqlite", path.Join(tb.TempDir(), "benchmark.db")+"?_journal=WAL&_timeout=10000&_fk=true")
 	noErr(tb, err)
 
 	_, err = db.Exec(sqliteSchema)
+	noErr(tb, err)
+
+	_, err = db.Exec(sqlitePragmas)
 	noErr(tb, err)
 
 	newDB := sqlite.NewDB(db, withMutex)
@@ -152,7 +157,7 @@ func setupSQLitePool(tb testing.TB) (*sqlite.DB, *sqlite.DB) {
 
 	p := path.Join(tb.TempDir(), "benchmark.db")
 
-	writeDB, err := sql.Open("sqlite3", p+"?_journal=WAL&_timeout=10000&_fk=true")
+	writeDB, err := sql.Open("sqlite", p+"?_journal=WAL&_timeout=10000&_fk=true")
 	noErr(tb, err)
 
 	writeDB.SetMaxOpenConns(1)
@@ -160,12 +165,18 @@ func setupSQLitePool(tb testing.TB) (*sqlite.DB, *sqlite.DB) {
 	_, err = writeDB.Exec(sqliteSchema)
 	noErr(tb, err)
 
+	_, err = writeDB.Exec(sqlitePragmas)
+	noErr(tb, err)
+
 	newWriteDB := sqlite.NewDB(writeDB, false)
 
 	err = newWriteDB.WritePost("First post!", loremIpsum)
 	noErr(tb, err)
 
-	readDB, err := sql.Open("sqlite3", p+"?_journal=WAL&_timeout=10000&_fk=true")
+	readDB, err := sql.Open("sqlite", p)
+	noErr(tb, err)
+
+	_, err = readDB.Exec(sqlitePragmas)
 	noErr(tb, err)
 
 	newReadDB := sqlite.NewDB(readDB, false)
