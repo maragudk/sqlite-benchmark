@@ -12,7 +12,7 @@ benchmark-sqlite:
 
 .PHONY: benchmark-sqlite-csv
 benchmark-sqlite-csv:
-	go test -timeout 30m -cpu 1,2,4,8,16,32,64,128,256,512,1024 -bench . | bench2csv -freq >>benchmark.csv
+	go test -timeout 30m -cpu 1,2,4,8,16,32,64,128,256,512 -bench . | bench2csv -freq >>benchmark.csv
 
 .PHONY: down
 down:
